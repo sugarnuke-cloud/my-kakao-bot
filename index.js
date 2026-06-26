@@ -1,34 +1,63 @@
-const scriptName = "instaconverter";
+const express = require('express');
+const puppeteer = require('puppeteer');
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
-  if (msg.includes("instagram.com/p/") || msg.includes("instagram.com/reel/")) {
-    try {
-      var instaUrlMatch = msg.match(/(https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[^\s?]+)/);
-      if (instaUrlMatch) {
-        var targetUrl = instaUrlMatch[0];
-        var renderApiUrl = "https://내서버이름.onrender.com/insta?url=" + encodeURIComponent(targetUrl);
-        var responseJson = Utils.getWebText(renderApiUrl);
-        
-        if (responseJson) {
-          var parsedData = JSON.parse(responseJson);
-          var instaContent = parsedData.content || "내용을 불러올 수 없는 포스트이거나 비공개 계정입니다.";
-          var instaImageStr = parsedData.image || "";
-          
-          var resultText = "📸 인스타그램 미리보기\n\n💬 내용:\n" + instaContent;
-          if (instaImageStr !== "") {
-            resultText += "\n\n🖼️ 썸네일 주소:\n" + instaImageStr;
-          }
-          replier.reply(room, resultText);
-        }
+app.get('/insta', async (req, res) => {
+  const instaUrl = req.query.url;
+  if (!instaUrl) {
+    return res.status(400).json({ error: 'Missing url parameter' });
+  }
+
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ]
+    });
+
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'ko-KR,ko;q=0.9' });
+
+    await page.goto(instaUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+    const data = await page.evaluate(() => {
+      let content = '내용을 불러올 수 없는 포스트이거나 비공개 계정입니다.';
+      let image = '';
+
+      const descMeta = document.querySelector('meta[property="og:description"]') || document.querySelector('meta[name="description"]');
+      if (descMeta) {
+        content = descMeta.getAttribute('content').split(' - Instagram:')[0].trim();
+      } else if (document.title && document.title !== 'Instagram') {
+        content = document.title.split('• Instagram 사진 및 동영상')[0].trim();
       }
-    } catch (instaError) {
-      replier.reply(room, "[Error] 인스타그램 데이터 조회 실패");
+
+      const imgMeta = document.querySelector('meta[property="og:image"]');
+      if (imgMeta) {
+        image = imgMeta.getAttribute('content');
+      }
+
+      return { content, image };
+    });
+
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  } finally {
+    if (browser) {
+      await browser.close();
     }
   }
-}
+});
 
-function onCreate(savedInstanceState, activity) {}
-function onStart(activity) {}
-function onResume(activity) {}
-function onPause(activity) {}
-function onStop(activity) {}
+app.listen(PORT, () => {});
