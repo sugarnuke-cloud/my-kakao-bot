@@ -25,7 +25,7 @@ app.post('/api/music', async (req, res) => {
             cleanUrl = `https://www.youtube.com/watch?v=${youtubeMatch[2]}`;
             targetPlatform = 'youtube';
         } else if (spotifyMatch) {
-            // intl-ko 등 국가코드를 무시하고 표준 스포티파이 주소로 강제 통일
+            // [★오타수정] intl-ko 등 국가코드를 무시하고 표준 스포티파이 주소로 올바르게 강제 통일
             cleanUrl = `https://open.spotify.com/track/${spotifyMatch[2]}`;
             targetPlatform = 'spotify';
         }
